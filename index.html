@@ -71,6 +71,10 @@
   tfoot td { font-weight: 700; border-top: 2px solid var(--border); }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
   @media (max-width: 600px) { .grid2 { grid-template-columns: 1fr; } }
+  .pessoas { display: grid; grid-template-columns: 1fr minmax(150px, 190px) 96px; gap: 0 12px; align-items: end; }
+  .pessoas .tick { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .pessoas .tick input { width: 18px; height: 18px; margin: 0; }
+  @media (max-width: 600px) { .pessoas { grid-template-columns: 1fr 1fr; } .pessoas > div:empty { display: none; } }
   .formula { margin-top: 20px; }
   .formula code { background: var(--bg); padding: 2px 6px; border-radius: 4px; }
   .formula li { margin-bottom: 6px; }
@@ -457,17 +461,15 @@
       </div>
 
       <h3>Relatório</h3>
-      <div class="grid2">
-        <div><label for="comp1">Comprador 1</label><input id="comp1" type="text" value="${esc(estado.nomes.comp1)}"></div>
-        <div><label for="comp2">Comprador 2 <small>(opcional)</small></label><input id="comp2" type="text" value="${esc(estado.nomes.comp2)}"></div>
-        <div><label for="aval1">Avalista 1 <small>(opcional)</small></label><input id="aval1" type="text" value="${esc(estado.nomes.aval1)}"></div>
-        <div><label for="aval2">Avalista 2 <small>(opcional)</small></label><input id="aval2" type="text" value="${esc(estado.nomes.aval2)}"></div>
-        <div><label for="fone">Telefone comprador 1</label><input id="fone" class="fone" type="tel" value="${esc(estado.nomes.fone)}"></div>
-        <div><label for="fone2">Telefone comprador 2 <small>(se houver)</small></label><input id="fone2" class="fone" type="tel" value="${esc(estado.nomes.fone2)}"></div>
-        <div><label for="ref1">Referência 1 <small>(nome / parentesco)</small></label><input id="ref1" type="text" value="${esc(estado.nomes.ref1)}"></div>
-        <div><label for="ref1fone">Telefone referência 1</label><input id="ref1fone" class="fone" type="tel" value="${esc(estado.nomes.ref1fone)}"></div>
-        <div><label for="ref2">Referência 2 <small>(nome / parentesco)</small></label><input id="ref2" type="text" value="${esc(estado.nomes.ref2)}"></div>
-        <div><label for="ref2fone">Telefone referência 2</label><input id="ref2fone" class="fone" type="tel" value="${esc(estado.nomes.ref2fone)}"></div>
+      <div class="pessoas">
+        ${[['comp1', 'fone', 'Comprador 1', ''], ['comp2', 'fone2', 'Comprador 2', ' <small>(opcional)</small>']].map(([nome, fone, rot, extra]) => `
+        <div><label for="${nome}">${rot}${extra}</label><input id="${nome}" type="text" value="${esc(estado.nomes[nome])}"></div>
+        <div><label for="${fone}">Telefone</label><input id="${fone}" class="fone" type="tel" value="${esc(estado.nomes[fone])}"></div>
+        <div></div>`).join('')}
+        ${[1, 2].map(n => `
+        <div><label for="ref${n}">Referência ${n}</label><input id="ref${n}" type="text" value="${esc(estado.nomes['ref' + n])}"></div>
+        <div><label for="ref${n}fone">Telefone</label><input id="ref${n}fone" class="fone" type="tel" value="${esc(estado.nomes[`ref${n}fone`])}"></div>
+        <label class="tick"><input id="ref${n}aval" type="checkbox" ${estado.nomes[`ref${n}aval`] ? 'checked' : ''}> Avalista</label>`).join('')}
       </div>
       <button type="button" class="primary" id="gerar">Gerar relatório A4</button>
       <div id="relMsg"></div>`;
@@ -482,6 +484,7 @@
       estado.parcelas[+el.dataset.i] = parseMoney(el.value); $('distMsg').innerHTML = ''; atualizarEntrada();
     }));
     CAMPOS_RELATORIO.forEach(id => $(id).addEventListener('input', () => { estado.nomes[id] = $(id).value; }));
+    [1, 2].forEach(n => $(`ref${n}aval`).addEventListener('change', e => { estado.nomes[`ref${n}aval`] = e.target.checked; }));
     $('distribuir').addEventListener('click', distribuir);
     $('distribuirDec').addEventListener('click', distribuirDecrescente);
     $('gerar').addEventListener('click', gerarRelatorio);
@@ -499,7 +502,8 @@
   }
 
   // Campos preenchidos só para o relatório (não afetam o cálculo)
-  const CAMPOS_RELATORIO = ['comp1', 'comp2', 'aval1', 'aval2', 'fone', 'fone2', 'ref1', 'ref1fone', 'ref2', 'ref2fone'];
+  // (ref1aval/ref2aval: marcação de que a referência também é avalista)
+  const CAMPOS_RELATORIO = ['comp1', 'comp2', 'fone', 'fone2', 'ref1', 'ref1fone', 'ref2', 'ref2fone'];
 
   // Telefone: (53) 99999-9999 ou (53) 3333-3333
   document.addEventListener('input', e => {
@@ -691,16 +695,27 @@
     const soma = arr => arr.reduce((s, v) => s + v, 0);
     const totJO = soma(linhas.map(l => l.jo)), totP = soma(parcelas);
     const linha = (rotulo, valor) => `<div><span>${rotulo}</span><span>${valor}</span></div>`;
-    const assinaturas = [['comp1', 'Comprador 1'], ['comp2', 'Comprador 2'], ['aval1', 'Avalista 1'], ['aval2', 'Avalista 2']]
-      .filter(([id]) => nomes[id].trim())
-      .map(([id, papel]) => `<div>${esc(nomes[id].trim())}<small>${papel}</small></div>`).join('');
-
     const t = id => nomes[id].trim();
-    // Telefones dos compradores na coluna da esquerda; referências na da direita
+
+    // Referências marcadas como avalista aparecem como "Avalista" (contatos e assinaturas); as demais, como "Referência"
+    const pessoasRef = [1, 2].map(n => ({ n, nome: t('ref' + n), fone: t(`ref${n}fone`), aval: !!nomes[`ref${n}aval`] }));
+    const qtd = aval => pessoasRef.filter(r => r.aval === aval).length;
+    const cont = { true: 0, false: 0 };
+    pessoasRef.forEach(r => {
+      const i = ++cont[r.aval];
+      r.papel = (r.aval ? 'Avalista' : 'Referência') + (qtd(r.aval) > 1 ? ' ' + i : '');
+    });
+
+    const assinaturas = [
+      ...[['comp1', 'Comprador 1'], ['comp2', 'Comprador 2']].filter(([id]) => t(id)).map(([id, papel]) => [t(id), papel]),
+      ...pessoasRef.filter(r => r.aval && r.nome).map(r => [r.nome, r.papel]),
+    ].map(([nome, papel]) => `<div>${esc(nome)}<small>${papel}</small></div>`).join('');
+
+    // Telefones dos compradores na coluna da esquerda; referências/avalistas na da direita
     const fones = [['fone', 'comp1'], ['fone2', 'comp2']].filter(([id]) => t(id))
       .map(([id, nome]) => linha(esc(t(nome)), esc(t(id))));
-    const refs = [1, 2].filter(n => t('ref' + n) || t(`ref${n}fone`))
-      .map(n => linha(`Ref. ${n}${t('ref' + n) ? ': ' + esc(t('ref' + n)) : ''}`, esc(t(`ref${n}fone`))));
+    const refs = pessoasRef.filter(r => r.nome || r.fone)
+      .map(r => linha(`${r.papel}${r.nome ? ': ' + esc(r.nome) : ''}`, esc(r.fone)));
     const vazio = '<div></div>';
     const contatos = [0, 1].filter(i => fones[i] || refs[i]).map(i => (fones[i] || vazio) + (refs[i] || vazio)).join('');
 
@@ -816,8 +831,9 @@
         enquadrarem neles. Este documento é uma simulação e não constitui oferta nem promessa de concessão desses
         benefícios.`),
       item(0, '4.', `<strong>Prazo de entrega.</strong> O prazo de entrega do empreendimento previsto no contrato com a Caixa
-        Econômica Federal é <strong>${prazo}</strong>. A data usada nesta simulação é uma estimativa de um possível
-        adiantamento da conclusão de obra, com base no ritmo atual da construção. Condições contratuais se aplicam.`),
+        Econômica Federal é <strong>${prazo}</strong>. A data usada nesta simulação é apenas uma estimativa de um possível
+        adiantamento da conclusão de obra, com base no ritmo atual da construção e não representa uma promessa. Consulte
+        condições contratuais para entrega do apartamento.`),
       item(0, '5.', `<strong>Entrega antecipada.</strong> Se a M91 entregar o imóvel antes do fim do parcelamento da entrada
         descrito neste documento, as parcelas restantes vencem antecipadamente e devem ser quitadas para a entrega das
         chaves. O pagamento poderá ser feito à vista ou no cartão de crédito em até 12 vezes. Por mera liberalidade a M91
@@ -873,7 +889,7 @@
       ato: antigo ? antigo.ato : 0,
       prazo: antigo && antigo.prazo <= p.meses ? antigo.prazo : p.meses,
       parcelas: Array.from({ length: p.meses }, (_, i) => antigo?.parcelas[i] ?? 0),
-      nomes: antigo ? antigo.nomes : Object.fromEntries(CAMPOS_RELATORIO.map(id => [id, ''])),
+      nomes: antigo ? antigo.nomes : { ...Object.fromEntries(CAMPOS_RELATORIO.map(id => [id, ''])), ref1aval: false, ref2aval: false },
     };
     render();
   });
