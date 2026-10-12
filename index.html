@@ -171,7 +171,7 @@
       <select id="tipo"></select>
 
       <label for="vi">Valor do imóvel (R$)</label>
-      <input id="vi" class="money" type="text" inputmode="decimal">
+      <input id="vi" class="money" type="text" readonly tabindex="-1">
 
       <label for="vid">Valor do imóvel com desconto (R$)</label>
       <input id="vid" class="money" type="text" inputmode="decimal">
@@ -334,7 +334,7 @@
     setMoney($('desc'), Math.max(0, money('vi') - money('vid')));
     validarComposicao();
   }
-  ['vi', 'vid'].forEach(id => $(id).addEventListener('input', atualizarDesconto));
+  $('vid').addEventListener('input', atualizarDesconto);
   ['fin', 'sub', 'fgts', 'rp'].forEach(id => $(id).addEventListener('input', validarComposicao));
 
   function validarComposicao() {

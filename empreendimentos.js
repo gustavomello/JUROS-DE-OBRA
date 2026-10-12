@@ -16,7 +16,7 @@ window.EMPREENDIMENTOS = [
     "cidade": "Pelotas",
     "entrega": "2028-07",
     "entregaContratual": "2029-06",
-    "percentualObra": 5.8,
+    "percentualObra": 4.66,
     "cotaTerreno": 10000,
     "tipos": [
       { "nome": "Com sacada", "valor": 235000 },
