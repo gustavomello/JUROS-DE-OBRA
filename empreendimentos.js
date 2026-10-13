@@ -7,6 +7,7 @@
 //   entrega         mês de entrega estimado usado na simulação, formato "AAAA-MM"
 //   entregaContratual  prazo de entrega do contrato com a Caixa ("AAAA-MM"), exibido no verso do relatório;
 //                      deixe "" para sair uma linha em branco para preencher à mão
+//   limiteEntrada   último mês do parcelamento padrão da entrada ("AAAA-MM"); opcional — sem ele, vai até a entrega
 //   percentualObra  % de obra concluída no mês atual (use ponto como decimal: 67.74)
 //   cotaTerreno     valor da cota terreno em R$ (liberada pela Caixa no 1º mês)
 //   tipos           tipos de unidade e respectivos valores em R$
@@ -16,6 +17,7 @@ window.EMPREENDIMENTOS = [
     "cidade": "Pelotas",
     "entrega": "2028-07",
     "entregaContratual": "2029-06",
+    "limiteEntrada": "2028-06",
     "percentualObra": 4.66,
     "cotaTerreno": 10000,
     "tipos": [

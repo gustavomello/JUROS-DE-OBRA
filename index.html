@@ -95,8 +95,8 @@
   .folha .titulo .dir { text-align: right; }
   .folha .blocos { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; margin-bottom: 6px; }
   .folha .bloco.largo { grid-column: 1 / -1; }
-  .folha .bloco .pares { display: grid; grid-template-columns: 1fr 1fr; column-gap: 28px; }
-  .folha .bloco .pares span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .folha .bloco .pares { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 28px; }
+  .folha .bloco .pares span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* nome longo vira "…", telefone nunca sai do quadro */
   .folha .bloco { border: 1px solid #bbb; border-radius: 4px; padding: 3px 7px; }
   .folha .bloco h4 { margin: 0 0 2px; font-size: 12pt; text-transform: uppercase; letter-spacing: .03em; color: #444; }
   .folha .bloco div:not(.pares) { display: flex; justify-content: space-between; gap: 6px; }
@@ -711,11 +711,13 @@
       ...pessoasRef.filter(r => r.aval && r.nome).map(r => [r.nome, r.papel]),
     ].map(([nome, papel]) => `<div>${esc(nome)}<small>${papel}</small></div>`).join('');
 
+    // Nos contatos vai só primeiro e último nome (o nome completo fica nas assinaturas)
+    const nomeCurto = nome => { const p = nome.split(/\s+/).filter(Boolean); return p.length > 2 ? `${p[0]} ${p[p.length - 1]}` : p.join(' '); };
     // Telefones dos compradores na coluna da esquerda; referências/avalistas na da direita
     const fones = [['fone', 'comp1'], ['fone2', 'comp2']].filter(([id]) => t(id))
-      .map(([id, nome]) => linha(esc(t(nome)), esc(t(id))));
+      .map(([id, nome]) => linha(esc(nomeCurto(t(nome))), esc(t(id))));
     const refs = pessoasRef.filter(r => r.nome || r.fone)
-      .map(r => linha(`${r.papel}${r.nome ? ': ' + esc(r.nome) : ''}`, esc(r.fone)));
+      .map(r => linha(`${r.papel}${r.nome ? ': ' + esc(nomeCurto(r.nome)) : ''}`, esc(r.fone)));
     const vazio = '<div></div>';
     const contatos = [0, 1].filter(i => fones[i] || refs[i]).map(i => (fones[i] || vazio) + (refs[i] || vazio)).join('');
 
@@ -845,7 +847,7 @@
         financiamento habitacional assinado entre o cliente e a Caixa, e o pagamento é de responsabilidade
         exclusiva do cliente. <strong>O VALOR PAGO A TÍTULO DE JUROS DE OBRA NÃO COMPÕE O PREÇO DO IMÓVEL.</strong>`),
       item(2, '6.1.2', `Os juros de obra são cobrados por débito em conta de titularidade do cliente na Caixa Econômica Federal.`),
-      item(2, '6.1.3', `Se a Caixa não conseguir debitar a parcela da conta do cliente, ela poderá debitar automaticamente da
+      item(2, '6.1.3', `Se a Caixa não conseguir debitar a parcela do juros de obra da conta do cliente, ela poderá debitar automaticamente da
         conta da M91. Nesse caso, a M91 cobrará diretamente do cliente o ressarcimento do valor.`),
       item(2, '6.1.4', `A Caixa cobra juros de obra até considerar a obra concluída, conforme suas regras, e liberar o
         empreendimento para entrega.`),
@@ -887,7 +889,10 @@
     estado = {
       p, linhas: simular(p),
       ato: antigo ? antigo.ato : 0,
-      prazo: antigo && antigo.prazo <= p.meses ? antigo.prazo : p.meses,
+      // Prazo da entrada: mantém o digitado ao recalcular o mesmo empreendimento; senão usa o padrão
+      // (até o mês limite do empreendimento, sem passar da entrega)
+      prazo: antigo && antigo.p.emp === emp && antigo.prazo <= p.meses ? antigo.prazo
+        : Math.max(1, Math.min(p.meses, emp.limiteEntrada ? mesesAte(emp.limiteEntrada) : p.meses)),
       parcelas: Array.from({ length: p.meses }, (_, i) => antigo?.parcelas[i] ?? 0),
       nomes: antigo ? antigo.nomes : { ...Object.fromEntries(CAMPOS_RELATORIO.map(id => [id, ''])), ref1aval: false, ref2aval: false },
     };
