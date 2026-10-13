@@ -59,6 +59,14 @@
   .entrada-bar > div { flex: 1 1 180px; }
   .entrada-bar > div.curto { flex: 0 1 150px; }
   .entrada-bar label { margin-top: 0; }
+  .link-btn { background: none; border: none; color: var(--accent); cursor: pointer; padding: 0; margin-top: 12px;
+              font-size: .9rem; font-weight: 600; font-family: inherit; }
+  .painel-inter { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; max-width: 460px; margin-top: 4px;
+                  padding: 4px 12px 12px; border: 1px solid var(--border); border-radius: 10px; }
+  .painel-inter[hidden] { display: none; }
+  .painel-inter .habite { margin: 0; padding: 9px 0; color: var(--muted); }
+  table.sem-inter .col-int { display: none; }
+  #linhaBalao[hidden] { display: none; }
   .legend { display: flex; gap: 16px; font-size: .85rem; color: var(--muted); margin: 6px 0 20px; flex-wrap: wrap; }
   .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; }
   .table-wrap { overflow-x: auto; }
@@ -120,9 +128,8 @@
   #modal .folha { height: 296mm; min-height: 0; overflow: hidden; }
   .folha.verso { padding-top: 10mm; padding-bottom: 10mm; }
   .folha .cond-janela { overflow: hidden; }
-  .folha #janVerso { height: 100%; }
   .folha .cond-janela > .condicoes { display: flow-root; } /* evita que margens internas vazem e desalinhem o corte */
-  .folha .condicoes { line-height: 1.3; }
+  .folha .condicoes { line-height: 1.15; } /* espaçamento "simples" (como no Word): pior caso de 24x + intermediárias cabe em 2 páginas */
   .folha .cond-titulo { font-size: 1.05em; text-transform: uppercase; margin: 6px 0 4px; padding-top: 4px; border-top: 1.5px solid #111; }
   .folha .cond { display: flex; gap: .4em; margin-bottom: .15em; text-align: justify; }
   .folha .cond .num { flex: none; min-width: 1.4em; font-weight: 700; }
@@ -437,6 +444,27 @@
           <input id="prazo" type="number" min="1" max="${linhas.length}" step="1" value="${estado.prazo}">
         </div>
       </div>
+      <button type="button" class="link-btn" id="toggleInter" aria-expanded="${estado.mostrarInter}">
+        ${estado.mostrarInter ? '− Ocultar' : '+ Adicionar'} parcelas intermediárias e balão chaves</button>
+      <div id="painelInter" class="painel-inter" ${estado.mostrarInter ? '' : 'hidden'}>
+        ${estado.inter.map((it, k) => `
+        <div>
+          <label for="inter${k}v">Intermediária ${k + 1} (R$)</label>
+          <input id="inter${k}v" class="money inter-v" data-k="${k}" type="text" inputmode="decimal" value="${it.valor ? fmt(it.valor) : ''}" placeholder="0,00">
+        </div>
+        <div>
+          <label for="inter${k}m">Vencimento</label>
+          <select id="inter${k}m" class="inter-m" data-k="${k}">
+            <option value="0">—</option>
+            ${linhas.map(l => `<option value="${l.m}" ${it.mes === l.m ? 'selected' : ''}>${l.data}</option>`).join('')}
+          </select>
+        </div>`).join('')}
+        <div>
+          <label for="balao">Balão chaves (R$)</label>
+          <input id="balao" class="money" type="text" inputmode="decimal" value="${estado.balao ? fmt(estado.balao) : ''}" placeholder="0,00">
+        </div>
+        <div><label>Vencimento</label><p class="habite">Habite-se</p></div>
+      </div>
       <div class="entrada-bar" style="margin-top:10px">
         <button type="button" class="secondary" id="distribuir">Distribuir restante nas parcelas</button>
         <button type="button" class="secondary" id="distribuirDec">Parcelas decrescentes (desembolso constante)</button>
@@ -450,13 +478,17 @@
         <span><i style="background:var(--bar-entrada)"></i>Parcela da entrada</span>
       </div>
       <div class="table-wrap">
-        <table>
-          <thead><tr><th>Mês</th><th>Vencimento</th><th>% obra</th><th>Juros de obra</th><th>Parcela da entrada</th><th>Desembolso total mensal</th></tr></thead>
+        <table id="tabSim">
+          <thead><tr><th>Mês</th><th>Vencimento</th><th>% obra</th><th>Juros de obra</th><th>Parcela da entrada</th>
+            <th class="col-int">Intermediária</th><th>Desembolso total mensal</th></tr></thead>
           <tbody>${linhas.map((l, i) => `<tr>
             <td>${l.m}</td><td>${l.data}</td><td>${pct(l.perc)}</td><td>${brl(l.jo)}</td>
             <td><input class="money parcela" data-i="${i}" type="text" inputmode="decimal" value="${fmt(estado.parcelas[i])}"></td>
-            <td class="total" id="tot${i}"></td></tr>`).join('')}</tbody>
-          <tfoot><tr><td>Total</td><td></td><td></td><td id="fJO"></td><td id="fP"></td><td id="fT"></td></tr></tfoot>
+            <td class="col-int" id="int${i}"></td>
+            <td class="total" id="tot${i}"></td></tr>`).join('')}
+            <tr id="linhaBalao"><td>Chaves</td><td>Habite-se</td><td>—</td><td>—</td><td>—</td><td class="col-int" id="balaoCel"></td><td class="total" id="balaoTot"></td></tr>
+          </tbody>
+          <tfoot><tr><td>Total</td><td></td><td></td><td id="fJO"></td><td id="fP"></td><td class="col-int" id="fI"></td><td id="fT"></td></tr></tfoot>
         </table>
       </div>
 
@@ -475,6 +507,19 @@
       <div id="relMsg"></div>`;
 
     $('ato').addEventListener('input', () => { estado.ato = money('ato'); atualizarEntrada(); });
+    $('toggleInter').addEventListener('click', () => {
+      estado.mostrarInter = !estado.mostrarInter;
+      $('painelInter').hidden = !estado.mostrarInter;
+      $('toggleInter').setAttribute('aria-expanded', estado.mostrarInter);
+      $('toggleInter').textContent = `${estado.mostrarInter ? '− Ocultar' : '+ Adicionar'} parcelas intermediárias e balão chaves`;
+    });
+    $('result').querySelectorAll('.inter-v').forEach(el => el.addEventListener('input', () => {
+      estado.inter[+el.dataset.k].valor = parseMoney(el.value); atualizarEntrada();
+    }));
+    $('result').querySelectorAll('.inter-m').forEach(el => el.addEventListener('change', () => {
+      estado.inter[+el.dataset.k].mes = +el.value; atualizarEntrada();
+    }));
+    $('balao').addEventListener('input', () => { estado.balao = money('balao'); atualizarEntrada(); });
     $('prazo').addEventListener('change', () => {
       estado.prazo = Math.min(linhas.length, Math.max(1, Math.round(num('prazo')) || linhas.length));
       $('prazo').value = estado.prazo;
@@ -523,12 +568,25 @@
     atualizarEntrada();
   }
 
+  // Parcelas intermediárias (somadas por mês, 0 = sem vencimento escolhido) e balão chaves
+  function extrasEntrada() {
+    const porMes = estado.linhas.map(() => 0);
+    let totInter = 0;
+    estado.inter.forEach(it => {
+      if (!it.valor) return;
+      totInter += it.valor;
+      if (it.mes >= 1 && it.mes <= porMes.length) porMes[it.mes - 1] += it.valor;
+    });
+    return { porMes, totInter, balao: estado.balao, total: totInter + estado.balao };
+  }
+
   // Restante a parcelar em centavos, ou null (com mensagem) se não couber o mínimo por parcela
   function restanteParcelar() {
     const n = estado.prazo;
-    const restante = cents(estado.p.rp) - cents(estado.ato);
+    const extras = extrasEntrada().total;
+    const restante = cents(estado.p.rp) - cents(estado.ato) - cents(extras);
     if (restante < 0) {
-      $('distMsg').innerHTML = `<div class="msg err">O ato é maior que os recursos próprios.</div>`;
+      $('distMsg').innerHTML = `<div class="msg err">${extras ? 'Ato, intermediárias e balão somam' : 'O ato é'} mais que os recursos próprios.</div>`;
       return null;
     }
     if (restante > 0 && restante < PARCELA_MIN * n) {
@@ -642,13 +700,20 @@
   function problemasEntrada() {
     const { p, parcelas } = estado;
     const totP = parcelas.reduce((s, v) => s + v, 0);
-    const entrada = estado.ato + totP;
+    const ex = extrasEntrada();
+    const entrada = estado.ato + totP + ex.total;
     const dif = p.rp - entrada;
     const abaixoMin = totP > 0 ? parcelas.slice(0, estado.prazo).filter(v => cents(v) < PARCELA_MIN).length : 0;
     const msgs = [];
+    const partes = [`Ato (${brl(estado.ato)})`, `parcelas (${brl(totP)})`];
+    if (ex.totInter) partes.push(`intermediárias (${brl(ex.totInter)})`);
+    if (ex.balao) partes.push(`balão chaves (${brl(ex.balao)})`);
     if (!igual(entrada, p.rp))
-      msgs.push(`Ato (${brl(estado.ato)}) + parcelas (${brl(totP)}) = <strong>${brl(entrada)}</strong>.
+      msgs.push(`${partes.join(' + ')} = <strong>${brl(entrada)}</strong>.
          ${dif > 0 ? 'Faltam' : 'Excedem'} <strong>${brl(Math.abs(dif))}</strong> para os recursos próprios (${brl(p.rp)}).`);
+    estado.inter.forEach((it, k) => {
+      if (it.valor && !it.mes) msgs.push(`Escolha o vencimento da intermediária ${k + 1}.`);
+    });
     if (abaixoMin)
       msgs.push(`${abaixoMin} parcela(s) abaixo do mínimo de ${brl(PARCELA_MIN / 100)}.`);
     return msgs;
@@ -657,16 +722,25 @@
   function atualizarEntrada() {
     const { p, linhas, parcelas } = estado;
     const soma = arr => arr.reduce((s, v) => s + v, 0);
-    linhas.forEach((l, i) => { $('tot' + i).textContent = brl(l.jo + parcelas[i]); });
+    const ex = extrasEntrada();
+    linhas.forEach((l, i) => {
+      $('int' + i).textContent = ex.porMes[i] ? brl(ex.porMes[i]) : '—';
+      $('tot' + i).textContent = brl(l.jo + parcelas[i] + ex.porMes[i]);
+    });
     const totJO = soma(linhas.map(l => l.jo)), totP = soma(parcelas);
     $('fJO').textContent = brl(totJO);
     $('fP').textContent = brl(totP);
-    $('fT').textContent = brl(totJO + totP);
+    $('fI').textContent = brl(ex.total);
+    $('fT').textContent = brl(totJO + totP + ex.total);
+    // Coluna de intermediárias e linha do balão só aparecem quando usadas
+    $('tabSim').classList.toggle('sem-inter', !ex.total);
+    $('linhaBalao').hidden = !ex.balao;
+    $('balaoCel').textContent = $('balaoTot').textContent = brl(ex.balao);
 
     const msgs = problemasEntrada();
     $('entradaMsg').innerHTML = msgs.length
       ? `<div class="msg err">${msgs.join('<br>')}</div>`
-      : `<div class="msg ok">Ato + parcelas fecham os recursos próprios (${brl(p.rp)}).</div>`;
+      : `<div class="msg ok">${ex.total ? 'Ato + parcelas + intermediárias/balão' : 'Ato + parcelas'} fecham os recursos próprios (${brl(p.rp)}).</div>`;
 
     const mensais = linhas.map((l, i) => l.jo + parcelas[i]);
     $('kpis').innerHTML = `
@@ -694,6 +768,7 @@
 
     const soma = arr => arr.reduce((s, v) => s + v, 0);
     const totJO = soma(linhas.map(l => l.jo)), totP = soma(parcelas);
+    const ex = extrasEntrada();
     const linha = (rotulo, valor) => `<div><span>${rotulo}</span><span>${valor}</span></div>`;
     const t = id => nomes[id].trim();
 
@@ -758,64 +833,86 @@
         <tbody>
           <tr class="ato"><td>Ato</td><td>${dataMes(0)}</td><td>—</td><td>—</td><td>${brl(estado.ato)}</td><td class="total">${brl(estado.ato)}</td></tr>
           ${linhas.map((l, i) => `<tr><td>${l.m}</td><td>${l.data}</td><td>${pct(l.perc)}</td><td>${brl(l.jo)}</td>
-            <td>${parcelas[i] ? brl(parcelas[i]) : '—'}</td><td class="total">${brl(l.jo + parcelas[i])}</td></tr>`).join('')}
+            <td>${parcelas[i] ? brl(parcelas[i]) : '—'}</td><td class="total">${brl(l.jo + parcelas[i])}</td></tr>`
+            // Intermediárias vencendo neste mês entram como linhas próprias logo abaixo dele
+            + estado.inter.map((it, k) => it.valor && it.mes === l.m
+              ? `<tr class="ato"><td>Interm. ${k + 1}</td><td>${l.data}</td><td>—</td><td>—</td><td>${brl(it.valor)}</td><td class="total">${brl(it.valor)}</td></tr>`
+              : '').join('')).join('')}
+          ${estado.balao ? `<tr class="ato"><td>Chaves</td><td>Habite-se</td><td>—</td><td>—</td><td>${brl(estado.balao)}</td><td class="total">${brl(estado.balao)}</td></tr>` : ''}
         </tbody>
-        <tfoot><tr><td>Total</td><td></td><td></td><td>${brl(totJO)}</td><td>${brl(totP + estado.ato)}</td><td>${brl(totJO + totP + estado.ato)}</td></tr></tfoot>
+        <tfoot><tr><td>Total</td><td></td><td></td><td>${brl(totJO)}</td><td>${brl(totP + estado.ato + ex.total)}</td><td>${brl(totJO + totP + estado.ato + ex.total)}</td></tr></tfoot>
       </table>
       <p class="aviso">${$('avisoTexto').textContent.replace(/\s+/g, ' ').trim()}</p>
       <div class="cond-janela" id="janFrente"></div>`;
-    $('verso').innerHTML = `<div class="cond-janela" id="janVerso"></div>`;
+    $('verso').innerHTML = '';
+    document.querySelectorAll('#modal .folha.extra').forEach(el => el.remove());
 
-    // O mesmo texto vai nas duas janelas: a da frente mostra o início, a do verso continua de onde a frente parou
+    // O mesmo texto vai em todas as janelas: a da frente mostra o início e cada página seguinte continua de onde a anterior parou
     const texto = `<h2 class="cond-titulo">Condições da simulação</h2>${condicoesGerais(p).join('')}
       <div class="nao-quebra">${dataLocal}<div class="assinaturas">${assinaturas}</div></div>`;
     $('janFrente').innerHTML = `<div class="condicoes">${texto}</div>`;
-    $('janVerso').innerHTML = `<div class="condicoes">${texto}</div>`;
     $('modal').hidden = false;
-    const fs = paginarCondicoes();
-    $('relFonte').textContent = fs < COND_FONTE ? `Atenção: texto não coube em ${COND_FONTE} pt; reduzido para ${fs.toLocaleString('pt-BR')} pt.` : '';
+    const paginas = paginarCondicoes(texto);
+    $('relFonte').textContent = paginas > 2 ? `Atenção: o relatório ficou com ${paginas} páginas.` : '';
   }
 
   /*
-   * Paginação das condições gerais (Arial 12, diretriz do jurídico): o texto começa na frente, logo após a tabela,
-   * e continua no verso. O corte é feito no fim de uma linha (pode partir um item); data e assinaturas nunca
-   * são partidas. Se não couber nas duas páginas, reduz a fonte em 0,5pt.
+   * Paginação das condições gerais (Arial 12, diretriz do jurídico; a fonte nunca é reduzida): o texto começa na
+   * frente, logo após a tabela, e continua nas páginas seguintes (verso e, se precisar, uma 3ª página). O corte é
+   * feito no fim de uma linha (pode partir um item); o quadro em destaque e o bloco de data e assinaturas nunca são
+   * partidos. Retorna o total de páginas.
    */
-  const COND_FONTE = 12;
-  function paginarCondicoes() {
-    const janF = $('janFrente'), janV = $('janVerso');
-    const contF = janF.firstElementChild, contV = janV.firstElementChild;
-    const alturaUtil = folha => {
-      const cs = getComputedStyle(folha);
-      return folha.getBoundingClientRect().bottom - parseFloat(cs.paddingBottom);
-    };
-    for (let fs = COND_FONTE; fs >= 8; fs -= 0.5) {
-      contF.style.fontSize = contV.style.fontSize = fs + 'pt';
-      janF.style.height = ''; contV.style.marginTop = '';
-      const topo = contF.getBoundingClientRect().top;
-      const disponivel = alturaUtil($('folha')) - topo;
+  function paginarCondicoes(texto) {
+    const janF = $('janFrente'), contF = janF.firstElementChild;
+    const fundoUtil = folha => folha.getBoundingClientRect().bottom - parseFloat(getComputedStyle(folha).paddingBottom);
+    janF.style.height = '';
+    const topo = contF.getBoundingClientRect().top;
+    const total = contF.scrollHeight;
 
-      // Pontos de corte possíveis: fim de cada linha de texto e início de cada bloco que não pode ser partido
-      const cortes = [0];
-      const walker = document.createTreeWalker(contF, NodeFilter.SHOW_TEXT);
-      const range = document.createRange();
-      for (let n; (n = walker.nextNode());) {
-        if (!n.textContent.trim() || n.parentElement.closest('.nao-quebra, .destaque')) continue;
-        range.selectNodeContents(n);
-        for (const r of range.getClientRects()) if (r.width > 1) cortes.push(r.bottom - topo);
-      }
-      contF.querySelectorAll('.nao-quebra, .destaque').forEach(el => cortes.push(el.getBoundingClientRect().top - topo));
-      let corte = Math.ceil(Math.max(...cortes.filter(c => c <= disponivel - 1)));
-      // Só o título sem nenhuma linha de texto não vale a pena: manda tudo para o verso
-      const fimTitulo = contF.querySelector('.cond-titulo').getBoundingClientRect().bottom - topo;
-      if (corte <= fimTitulo + 1) corte = 0;
-
-      janF.style.height = corte + 'px';
-      contV.style.marginTop = -corte + 'px';
-      const restante = contF.scrollHeight - corte;
-      if (restante <= alturaUtil($('verso')) - janV.getBoundingClientRect().top) return fs;
+    // Pontos de corte possíveis: fim de cada linha de texto e início de cada bloco que não pode ser partido
+    // (o corte fica no meio do espaço entre uma linha e a seguinte, para não sobrar ponta de letra como "g" e "p")
+    const linhasTexto = [];
+    const walker = document.createTreeWalker(contF, NodeFilter.SHOW_TEXT);
+    const range = document.createRange();
+    for (let n; (n = walker.nextNode());) {
+      if (!n.textContent.trim() || n.parentElement.closest('.nao-quebra, .destaque')) continue;
+      range.selectNodeContents(n);
+      for (const r of range.getClientRects()) if (r.width > 1) linhasTexto.push({ top: r.top - topo, bottom: r.bottom - topo });
     }
-    return 8;
+    const tops = linhasTexto.map(l => l.top).sort((a, b) => a - b);
+    const cortes = [0, total, ...linhasTexto.map(l => {
+      const prox = tops.find(t => t > l.bottom);
+      return prox === undefined ? l.bottom + 2 : (l.bottom + prox) / 2;
+    })];
+    contF.querySelectorAll('.nao-quebra, .destaque').forEach(el => cortes.push(el.getBoundingClientRect().top - topo));
+    const melhorCorte = (inicio, limite) => {
+      const c = cortes.filter(x => x > inicio && x <= limite - 1);
+      return c.length ? Math.ceil(Math.max(...c)) : Math.floor(limite); // sem ponto bom: corta no limite
+    };
+
+    // Frente: só o título sem nenhuma linha de texto não vale a pena, manda tudo para a página seguinte
+    let corte = melhorCorte(0, fundoUtil($('folha')) - topo);
+    const fimTitulo = contF.querySelector('.cond-titulo').getBoundingClientRect().bottom - topo;
+    if (corte <= fimTitulo + 1) corte = 0;
+    janF.style.height = corte + 'px';
+
+    // Páginas de continuação: a primeira é o verso; cria outras enquanto sobrar texto
+    let paginas = 1, folha = $('verso');
+    while (corte < total - 1) {
+      if (paginas > 1) {
+        folha = document.createElement('div');
+        folha.className = 'folha verso extra';
+        $('modal').appendChild(folha);
+      }
+      paginas++;
+      folha.innerHTML = `<div class="cond-janela"><div class="condicoes" style="margin-top:${-corte}px">${texto}</div></div>`;
+      const jan = folha.firstElementChild;
+      const capacidade = fundoUtil(folha) - jan.getBoundingClientRect().top;
+      const proximo = total - corte <= capacidade ? total : melhorCorte(corte, corte + capacidade);
+      jan.style.height = (proximo - corte) + 'px';
+      corte = proximo;
+    }
+    return paginas;
   }
 
   // Texto estático das condições gerais
@@ -895,6 +992,13 @@
         : Math.max(1, Math.min(p.meses, emp.limiteEntrada ? mesesAte(emp.limiteEntrada) : p.meses)),
       parcelas: Array.from({ length: p.meses }, (_, i) => antigo?.parcelas[i] ?? 0),
       nomes: antigo ? antigo.nomes : { ...Object.fromEntries(CAMPOS_RELATORIO.map(id => [id, ''])), ref1aval: false, ref2aval: false },
+      // Intermediárias: vencimento após o fim da obra (ex.: troca de empreendimento) volta para "sem vencimento"
+      inter: [0, 1, 2].map(k => {
+        const it = antigo?.inter[k] || { valor: 0, mes: 0 };
+        return { valor: it.valor, mes: it.mes <= p.meses ? it.mes : 0 };
+      }),
+      balao: antigo ? antigo.balao : 0,
+      mostrarInter: antigo ? antigo.mostrarInter : false,
     };
     render();
   });
