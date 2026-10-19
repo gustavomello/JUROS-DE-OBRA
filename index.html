@@ -9,7 +9,7 @@
   :root {
     --bg: #f5f7fa; --card: #ffffff; --text: #1d2733; --muted: #5f6b7a;
     --border: #dde3ea; --accent: #0b6bcb; --accent-soft: #e6f0fb;
-    --bar-juros: #0b6bcb; --bar-entrada: #2e9e6a;
+    --bar-juros: #0b6bcb; --bar-entrada: #2e9e6a; --bar-inter: #e08a1e;
     --warn-bg: #fff6e0; --warn-text: #7a5300;
     --err-bg: #fdecec; --err-text: #a12020;
     --ok-bg: #e7f6ee; --ok-text: #1d6b45;
@@ -18,7 +18,7 @@
     :root {
       --bg: #11161c; --card: #1a212a; --text: #e6ebf0; --muted: #9aa6b4;
       --border: #2c3640; --accent: #4ea1f0; --accent-soft: #1d3147;
-      --bar-juros: #4ea1f0; --bar-entrada: #4cc38a;
+      --bar-juros: #4ea1f0; --bar-entrada: #4cc38a; --bar-inter: #f2b44a;
       --warn-bg: #3a2f12; --warn-text: #f4d58d;
       --err-bg: #3d1c1c; --err-text: #f5a3a3;
       --ok-bg: #16352a; --ok-text: #8fe0b8;
@@ -180,11 +180,11 @@
       <label for="vi">Valor do imóvel (R$)</label>
       <input id="vi" class="money" type="text" readonly tabindex="-1">
 
-      <label for="vid">Valor do imóvel com desconto (R$)</label>
-      <input id="vid" class="money" type="text" inputmode="decimal">
-
       <label for="desc">Valor do desconto* (R$) <small>(* condições no verso do relatório)</small></label>
       <input id="desc" class="money" type="text" value="0,00" readonly tabindex="-1">
+
+      <label for="vid">Valor do imóvel com desconto (R$)</label>
+      <input id="vid" class="money" type="text" inputmode="decimal">
 
       <h3>Composição do pagamento</h3>
 
@@ -406,20 +406,26 @@
 
   let estado = null;           // { p, linhas, ato, prazo, parcelas[] }
 
-  function grafico(linhas, parcelas) {
+  // Barras empilhadas: juros de obra + parcela da entrada + intermediárias do mês; o balão chaves vira uma barra extra no fim
+  function grafico(linhas, parcelas, ex) {
     const W = 640, H = 220, padL = 56, padB = 24, padT = 8;
-    const max = Math.max(...linhas.map((l, i) => l.jo + parcelas[i])) || 1;
-    const bw = (W - padL) / linhas.length;
+    const barras = linhas.map((l, i) => ({ rotulo: l.m, data: l.data, jo: l.jo, pe: parcelas[i], it: ex.porMes[i] }));
+    if (ex.balao) barras.push({ rotulo: 'Ch.', data: 'Chaves (Habite-se)', jo: 0, pe: 0, it: ex.balao });
+    const max = Math.max(...barras.map(b => b.jo + b.pe + b.it)) || 1;
+    const bw = (W - padL) / barras.length;
     const y = v => (H - padB) - (v / max) * (H - padB - padT);
     let bars = '';
-    linhas.forEach((l, i) => {
-      const x = padL + i * bw + bw * 0.15, w = bw * 0.7, pe = parcelas[i];
-      const dica = `${l.data} — Juros de obra: ${brl(l.jo)} | Entrada: ${brl(pe)} | Total: ${brl(l.jo + pe)}`;
-      bars += `<rect x="${x}" y="${y(l.jo)}" width="${w}" height="${y(0) - y(l.jo)}" fill="var(--bar-juros)"><title>${dica}</title></rect>`;
-      if (pe > 0)
-        bars += `<rect x="${x}" y="${y(l.jo + pe)}" width="${w}" height="${y(l.jo) - y(l.jo + pe)}" fill="var(--bar-entrada)"><title>${dica}</title></rect>`;
-      if (linhas.length <= 24 || l.m % Math.ceil(linhas.length / 12) === 0)
-        bars += `<text x="${x + w / 2}" y="${H - 6}" font-size="10" text-anchor="middle" fill="var(--muted)">${l.m}</text>`;
+    barras.forEach((b, i) => {
+      const x = padL + i * bw + bw * 0.15, w = bw * 0.7;
+      const dica = `${b.data} — Juros de obra: ${brl(b.jo)} | Entrada: ${brl(b.pe)}${b.it ? ` | ${b.rotulo === 'Ch.' ? 'Balão' : 'Intermediária'}: ${brl(b.it)}` : ''} | Total: ${brl(b.jo + b.pe + b.it)}`;
+      let base = 0;
+      [[b.jo, 'var(--bar-juros)'], [b.pe, 'var(--bar-entrada)'], [b.it, 'var(--bar-inter)']].forEach(([v, cor]) => {
+        if (v <= 0) return;
+        bars += `<rect x="${x}" y="${y(base + v)}" width="${w}" height="${y(base) - y(base + v)}" fill="${cor}"><title>${dica}</title></rect>`;
+        base += v;
+      });
+      if (barras.length <= 25 || b.rotulo === 'Ch.' || b.rotulo % Math.ceil(barras.length / 12) === 0)
+        bars += `<text x="${x + w / 2}" y="${H - 6}" font-size="10" text-anchor="middle" fill="var(--muted)">${b.rotulo}</text>`;
     });
     let grid = '';
     for (let k = 0; k <= 4; k++) {
@@ -476,6 +482,7 @@
       <div class="legend">
         <span><i style="background:var(--bar-juros)"></i>Juros de Obra</span>
         <span><i style="background:var(--bar-entrada)"></i>Parcela da entrada</span>
+        <span id="legInter" hidden><i style="background:var(--bar-inter)"></i>Intermediárias / balão chaves</span>
       </div>
       <div class="table-wrap">
         <table id="tabSim">
@@ -745,7 +752,8 @@
     const mensais = linhas.map((l, i) => l.jo + parcelas[i]);
     $('kpis').innerHTML = `
       <div class="kpi"><span>Média do desembolso mensal</span><strong>${brl(soma(mensais) / mensais.length)}</strong></div>`;
-    $('chart').innerHTML = grafico(linhas, parcelas);
+    $('chart').innerHTML = grafico(linhas, parcelas, ex);
+    $('legInter').hidden = !ex.total;
   }
 
   // ---- Relatório A4 ----
