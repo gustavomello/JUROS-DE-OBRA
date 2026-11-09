@@ -18,7 +18,7 @@ window.EMPREENDIMENTOS = [
     "entrega": "2028-07",
     "entregaContratual": "2029-06",
     "limiteEntrada": "2028-06",
-    "percentualObra": 4.66,
+    "percentualObra": 7.42,
     "cotaTerreno": 10000,
     "tipos": [
       { "nome": "Com sacada", "valor": 235000 },
