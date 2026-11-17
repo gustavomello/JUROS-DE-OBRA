@@ -566,7 +566,7 @@
       : d.length > 2 ? d.replace(/(\d{2})(\d+)/, '($1) $2') : d;
   }, true);
 
-  const PARCELA_MIN = 20000;   // R$ 200,00 em centavos
+  const PARCELA_MIN = 17500;   // R$ 175,00 em centavos
   const MAX_VALORES = 4;       // valores distintos de parcela permitidos no contrato
 
   function aplicarParcelas(centavos) {
